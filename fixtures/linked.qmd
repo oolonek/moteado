@@ -1,0 +1,432 @@
+---
+title: "Nature's Living Pharmacopeia: Linked Open Natural Products Data, from the Tree of Life to a Single Stereocenter"
+title-short: "Nature's Living Pharmacopeia"
+jupyter: python3
+author:
+  - name: Pierre-Marie Allard
+    orcid: 0000-0003-3389-2191
+    affiliations:
+      - id: unifr
+        name: University of Fribourg
+        department: Department of Biology
+        address: Chemin du Musée 10
+        city: Fribourg
+        postal-code: 1700
+        country: Switzerland
+        ror: https://ror.org/022fs9h90
+      - id: sib
+        name: SIB Swiss Institute of Bioinformatics
+        city: Lausanne
+        postal-code: 1015
+        country: Switzerland
+        ror: https://ror.org/002n09z45
+  - name: Jonathan Bisson
+    orcid: 0000-0003-1640-9989
+    affiliations:
+      - id: cdd
+        name: Collaborative Drug Discovery
+        city: Burlingame, CA
+        postal-code: 94010
+        country: United States
+        ror: https://ror.org/04b4sq284
+  - name: Adriano Rutz
+    email: adrutz@ethz.ch
+    orcid: 0000-0003-0443-9902
+    affiliations:
+      - id: ethz
+        name: ETH Zürich
+        department: Institute of Molecular Systems Biology
+        address: Otto-Stern-Weg 3
+        city: Zürich
+        postal-code: 8093
+        country: Switzerland
+        ror: https://ror.org/05a28rw58
+keywords: "linked open data, knowledge graphs, LOTUS, Wikidata, dereplication, chemotaxonomy, contextualized metabolomics, ethnobotany"
+abstract: |
+  Which compounds are known from this genus of plants, fungi, sponges, or actinomycetes?
+  Has this structure been reported from another organism across the tree of life?
+  Which relatives produce similar scaffolds?
+  Answering such routine natural products questions has long required weeks of reading, licensed databases, or custom scripts.
+  Here, we show how the open LOTUS knowledge base and its new browser and command-line platform, the LOTUS Explorer (`lotus-explore-rs`), answer them in seconds without code, from the distribution of biosynthetic classes across the tree of life down to the revision of a single stereocenter.
+  The answers draw on `{python} fmt(n['pairs'])` referenced structure–organism pairs curated as linked open data in Wikidata, synchronized with PubChem, reused by specialized metabolomics and ecological knowledge graphs, and paired with a catalogue of plain-language questions that both researchers and natural-language-to-SPARQL query tools reuse.
+  Placing this commons within the four-generation history of pharmacognosy—from annotated herbals and isolated compounds to metabolomes and linked open knowledge graphs—also reveals where our shared memory breaks down: only `{python} n['plant_pct']`% of vascular plant species and `1.1–4.8%` of fungal and bacterial species have a referenced molecule, `{python} n['cpd_single_pct']`% of all compounds are reported from a single organism, anatomical context is recorded on `0.01%` of occurrences, and species histories are split across four distinct nomenclatural relationships.
+  Most acutely, the inflow of newly published literature has nearly halted since the 2022 bulk import: just `{python} n['jnp_cov_2326']`% of articles published in this Journal since 2023 have entered the commons, down from `{python} n['jnp_cov_9804']`% for 1998–2004.
+  Machine-readable SMILES strings, required by this Journal from January 2027, provide the structural half of the remedy; we pair our human-in-the-loop curation auditor (`lotus curate`) with a simple proposal recording the source organism in the same Supporting Information spreadsheet so that every new article feeds this living pharmacopeia on the day it is published.
+bibliography: bib/references.bib
+format:
+  acs-pdf:
+    journal:
+      id: jnprdf
+      type: article
+      layout: traditional
+    keep-tex: true
+    include-in-header:
+      text: |
+        \usepackage{booktabs}
+filters:
+  - _extensions/cito/cito.lua
+---
+
+```{python}
+#| include: false
+import sys
+import pathlib
+sys.path.insert(0, str(pathlib.Path("scripts").resolve()))
+from metrics import fmt, g, n, s
+```
+
+# Introduction
+
+Every natural products study relies on what earlier investigators found and wrote down.
+Weighing which species of a genus to collect, checking whether a molecular formula or carbon skeleton has already been isolated from a related family, and verifying whether a solved structure—or one of its diastereomers—is genuinely new all depend on the same foundational record linking chemical structures, biological sources, and primary literature.
+Augustin Pyramus de Candolle observed in 1813 that botanical kinship is our surest guide to plant chemistry [@cito_obtainsBackgroundFrom:deCandolle1813].
+Long before modern journals, the manuscript herbals that preceded him functioned as shared knowledge bases: copied by hand, translated across languages, annotated in the margins, and amended by readers over fifteen centuries.
+
+In the epistemological framework of Allard, Bisson, Azzollini, Pauli, Cordell, and Wolfender [@cito_extends:Allard2018], pharmacognosy has passed through four generations (\textbf{Figure 3}A; \textbf{Figure S1}).
+During the *first generation*, empirical herbals and traditional medical systems documented whole organisms in their ecological and cultural settings, transmitting observations from Dioscorides' *De materia medica* (ca. 60 CE) through Mattioli's commented Renaissance editions (1544) to Linnaeus's binomial nomenclature (1753).
+The *second generation*, inaugurated by Sertürner's isolation of [morphine](https://www.wikidata.org/wiki/Q81225) in 1804 and consolidated around dedicated periodicals such as *Lloydia* (founded in 1938 and renamed the *Journal of Natural Products* in 1979) and early relational compilations such as Farnsworth's NAPRALERT [@cito_obtainsBackgroundFrom:Loub1985; @cito_usesDataFrom:Graham2024], shifted focus to purified constituents and structural elucidation.
+Yet this reductionist triumph also fragmented the record: hundreds of thousands of articles locked molecular structures into static ink drawings and tied biological sources to taxonomic names that continued to change as systematics advanced [@cito_obtainsBackgroundFrom:Sorokina2020; @cito_extends:Rutz2022].
+In the *third generation*, high-throughput mass spectrometry, NMR profiling, molecular networking [@cito_obtainsBackgroundFrom:Wang2016; @cito_extends:Allard2017], and *in silico* network annotation propagation (NAP) [@cito_usesMethodIn:daSilva2018] enabled thousands of spectral features to be compared across crude extracts, generating a flood of signals that quickly outstripped their biological and taxonomic provenance [@cito_extends:Allard2018; @cito_citesAsAuthority:Rutz2026a].
+
+Pharmacognosy has now entered its *fourth generation*, where **linked open data** and domain-specific knowledge graphs connect chemical structures, spectra, organisms, biosynthetic genes, and ecological traits [@cito_extends:Allard2018; @cito_extends:Rutz2022; @cito_usesMethodIn:Gaudry2024; @cito_usesMethodIn:Tandon2026].
+An incomplete or fragmented record carries a steep price in daily laboratory work: a dereplication query that misses a report filed under a basionym condemns an isolation campaign to months of rediscovery, a chemotaxonomic survey built on partial literature yields brittle evolutionary inferences, and statistical models trained on whatever subset of structures happens to be machine-readable inherit every taxonomic and stereochemical blind spot of that subset [@cito_agreesWith:Steffen2025].
+Across the natural sciences, modern statistical learning and predictive modeling did not emerge from algorithms in a vacuum; what made them possible was the commons—decades of open, structured, provenance-tracked data curated by domain communities.
+Protein structure prediction is the clearest chemical example: Jumper and colleagues could train AlphaFold in 2021 only because crystallographers had agreed in 1971 to deposit atomic coordinates in the open Protein Data Bank and sustained that deposition habit at publication for fifty years [@cito_obtainsBackgroundFrom:PDB1971; @cito_citesAsEvidence:Jumper2021].
+In natural products research, structured linked data—not unverified free text—are the true gold.
+
+In 2022, the LOTUS initiative established an open home for the elementary natural products observation (*this compound occurs in this organism according to this published evidence*) by seeding **Wikidata**—the free, collaborative, multilingual knowledge graph of structured statements, distinct from the encyclopedia articles of Wikipedia—with over half a million referenced structure–organism pairs [@cito_extends:Rutz2022; @cito_usesDataFrom:Vrandecic2014; @cito_usesDataFrom:Waagmeester2020].
+Because Wikidata assigns persistent identifiers (QIDs) to compounds, taxa, and scholarly articles and exposes them over standard RDF and SPARQL interfaces, this core occurrence graph now interoperates directly with PubChem [@cito_usesDataFrom:Kim2024], real-time chemical structure cartridges [@cito_usesMethodIn:Galgonek2021], biosynthetic repositories such as MIBiG and MITE [@cito_citesAsRelated:Blin2025; @cito_citesAsRelated:Rutz2025], and specialized federated graphs including the Experimental Natural Products Knowledge Graph (ENPKG) [@cito_usesMethodIn:Gaudry2024] and the Metabolomes, Traits, and Interactions Knowledge Graph (METRIN-KG) [@cito_usesMethodIn:Tandon2026].
+To put this linked open data infrastructure directly into the hands of bench chemists, biologists, and students without requiring any query language, we built **the LOTUS Explorer** (\url{https://lotus.nprod.net}) and its unified Rust command-line and curation workspace (`lotus-explore-rs`) [@cito_usesMethodIn:Rutz2026lotus; @cito_extends:Rutz2026].
+Over the same period, the *Journal of Natural Products* has modernized data stewardship at publication: requiring raw NMR data for new natural products since 2023 [@cito_agreesWith:Proteau2023], refining crystallographic deposition in 2025 [@cito_agreesWith:Moore2025], and mandating, from January 2027, machine-readable SMILES strings for all numbered compounds in a Supporting Information spreadsheet [@cito_extends:Linington2026].
+
+Written for natural products scientists working across plants, fungi, bacteria, and marine and terrestrial invertebrates, this article first showcases how the LOTUS Explorer and linked open commons answer everyday chemical and biological questions in seconds across six scales, from kingdom-wide biosynthesis to a single reassigned stereocenter.
+We then detail the new capabilities of the `lotus-explore-rs` platform—four-input structure and element filtering, two-stage scientific and vernacular taxon resolution, four-switch nomenclatural closure, human-in-the-loop curation (`lotus curate`), and standards-compliant Bioschemas and RDF exports—and show how a single curated statement feeds four complementary doors of access.
+Next, we audit the commons with reproducible open queries to measure what our collective memory captures, why `{python} n['cpd_single_pct']`% of reported compounds appear in only a single organism, and why the inflow of newly published literature has nearly halted since 2022.
+Finally, we propose a minimal addendum to the 2027 Supporting Information spreadsheet—recording the source organism alongside each SMILES string—so that every article published in this Journal enriches nature's living pharmacopeia on the day it appears.
+Throughout, we name computational methods by the specific operations they perform rather than attributing human agency to vague labels [@cito_agreesWith:BenderHanna2025].
+
+# Results and Discussion
+
+## From the Tree of Life to a Single Stereocenter
+
+To show what linked open natural products data make possible in daily laboratory work, we posed six questions spanning six scales of biological and chemical resolution (\textbf{Figure 1}; snapshot `{python} n['snapshot']`).
+Every query completed in `{python} g['E_time']` to `{python} g['C_time']` seconds on public endpoints, required no programming, and can be inspected or adapted directly in the browser via the LOTUS Explorer or the Question Catalogue.
+
+At the broadest evolutionary scale, joining occurrence records with chemical class annotations (`{python} fmt(g['A_classified'])` classified molecules) and with the taxonomic hierarchy of their producers yields a quantitative map of biosynthetic classes across nineteen major lineages in `{python} g['A_time']` s (\textbf{Figure 1}A).
+Metabolic specializations stand out immediately: terpenoids account for `{python} g['A_cnid_terp']`% of compounds reported from cnidarians and `{python} g['A_liver_terp']`% of those from liverworts, steroids represent `{python} g['A_echi_ster']`% of echinoderm metabolites, and alkaloids comprise half of the documented chemistry of tunicates (`{python} g['A_tuni_alk']`%) and bryozoans (`{python} g['A_bryo_alk']`%).
+The pale tiles across bacterial, fungal, and algal clades are equally informative, distinguishing genuinely sparse biosynthetic pathways from lineages where chemical classes have not yet been systematically linked.
+
+At the level of plant orders and families, coupling chemical similarity with taxonomic occurrences accelerates the search for sustainable biological sources (\textbf{Figure 1}B).
+The Chilean soapbark tree (*[Quillaja saponaria](https://www.wikidata.org/wiki/Q2382775)* Molina) supplies the oleanane triterpenoid aglycones of the QS-21 vaccine adjuvant family, whose clinical demand has spurred searches for alternative producers.
+Starting from the oleananes reported in *Q. saponaria* (such as [quillaic acid](https://www.wikidata.org/wiki/Q27108137), [`wd:Q27108137`](https://www.wikidata.org/wiki/Q27108137)), an IDSM Sachem similarity search (Tanimoto $\ge 0.90$) [@cito_usesMethodIn:Galgonek2021] joined with occurrence statements retrieves `{python} fmt(g['B_hits'])` structurally related triterpenoids across `{python} fmt(g['B_taxa'])` parent taxa in `{python} g['B_time']` s.
+Ranked outside *Quillaja*, the genera *`{python} g['B_top'][0]`* (`{python} g['B_top_n'][0]` compounds), *`{python} g['B_top'][1]`* (`{python} g['B_top_n'][1]`), *`{python} g['B_top'][2]`* (`{python} g['B_top_n'][2]`), and *`{python} g['B_top'][3]`* (`{python} g['B_top_n'][3]`) emerge immediately as prioritized candidates for targeted screening.
+
+For a clade-focused literature survey, the Question Catalogue can assemble a living summary table directly from the scholarly subgraph (\textbf{Figure 1}C).
+Querying bioactive metabolites reported from actinomycetes (phylum *Actinomycetota*) between 2014 and 2019 returns `{python} g['C_cpd']` compounds across `{python} g['C_taxa']` taxa supported by `{python} g['C_refs']` primary references in `{python} g['C_time']` s.
+Distinguishing specific assay mechanisms (*antibiotic*, *enzyme inhibitor*, *protein synthesis inhibitor*) from broad administrative or hazard lists (*WHO essential medicines*, 26 compounds; *carcinogen*, 8 compounds) also shows how open queries expose heterogeneous annotations that curators can refine in place.
+
+Cross-kingdom chemical convergence is equally direct to probe (\textbf{Figure 1}D).
+Searching across all kingdoms for amides structurally similar (Tanimoto $\ge 0.85$) to [piperine](https://www.wikidata.org/wiki/Q414501) returns `{python} g['D_hits']` compounds in `{python} g['D_time']` s.
+While *Piper* (`{python} g['D_piper']` compounds) and Piperaceae (`{python} g['D_piperaceae']`) dominate, the same scaffold family appears in distant angiosperm genera (*`{python} g['D_other'][0]`*, *`{python} g['D_other'][2]`*, *`{python} g['D_other'][3]`*, and *`{python} g['D_other'][5]`*) as well as in *`{python} g['D_other'][1]`* fungi (`{python} g['D_other'][4]`), connecting chemosensory pharmacology [@cito_citesAsRelated:Rutz2025a] with fungal biosynthesis across kingdoms.
+
+At the species rank, taxonomic revisions routinely sever a plant's chemistry in half unless nomenclatural links are traversed (\textbf{Figure 1}E).
+Rosemary was transferred in 2017 from *[Rosmarinus officinalis](https://www.wikidata.org/wiki/Q122679)* L. to *[Salvia rosmarinus](https://www.wikidata.org/wiki/Q102240169)* Spenn.
+In the commons, `{python} g['E_unified']` compounds (including abietane diterpenoids such as [carnosic acid](https://www.wikidata.org/wiki/Q412827), [`wd:Q412827`](https://www.wikidata.org/wiki/Q412827)) are recorded for the species as a whole, but a literal search for the current accepted name *[Salvia rosmarinus](https://www.wikidata.org/wiki/Q102240169)* recovers only `{python} g['E_new']`; the remaining `{python} g['E_old_only']` (`{python} round(100 * g['E_old_only'] / g['E_unified'])`%) are attached exclusively to the replaced name *[Rosmarinus officinalis](https://www.wikidata.org/wiki/Q122679)*.
+Across pharmacopeial plants reclassified following molecular phylogenetic studies, this split takes two forms (\textbf{Figure 1}E): in cases such as roseroot (*[Sedum rosea](https://www.wikidata.org/wiki/Q50862450)* / *[Rhodiola rosea](https://www.wikidata.org/wiki/Q161665)*, `{python} n['rhodiola_bas']` compounds), magnolia bark (*[Houpoea officinalis](https://www.wikidata.org/wiki/Q92823857)* / *[Magnolia officinalis](https://www.wikidata.org/wiki/Q1042288)*, `{python} n['magnolia_bas']`), and black cohosh (*[Cimicifuga racemosa](https://www.wikidata.org/wiki/Q19847513)* / *[Actaea racemosa](https://www.wikidata.org/wiki/Q682257)*, `{python} n['actaea_bas']`), 100% of the recorded chemistry sits on the linked name and a literal search on the queried segregate returns zero compounds.
+In others—such as *[Pentanema britannicum](https://www.wikidata.org/wiki/Q89188079)* / *[Inula britannica](https://www.wikidata.org/wiki/Q1633853)* (`{python} n['inula_uni']` unified compounds), chuanxiong (*[Oreocome striata](https://www.wikidata.org/wiki/Q50860080)* / *[Ligusticum striatum](https://www.wikidata.org/wiki/Q15583445)*, `{python} n['ligusticum_old'] + n['ligusticum_new'] + n['ligusticum_shared']` unified), and kutki (*[Neopicrorhiza scrophulariiflora](https://www.wikidata.org/wiki/Q15346400)* / *[Picrorhiza scrophulariiflora](https://www.wikidata.org/wiki/Q15246965)*, `{python} n['picrorhiza_old'] + n['picrorhiza_new'] + n['picrorhiza_shared']` unified)—reports are partitioned across both the newer combination and the basionym, with only a partial overlap (`{python} n['inula_shared']`, `{python} n['ligusticum_shared']`, and `{python} n['picrorhiza_shared']` shared compounds, respectively).
+By traversing all four bidirectional nomenclatural switches automatically, the LOTUS Explorer reunites these split histories in `{python} g['E_time']` s.
+
+Finally, at the resolution of a single stereocenter, the knowledge graph preserves the provenance of structural revisions rather than silently overwriting the past (\textbf{Figure 1}F).
+[Hyperelodione D](https://www.wikidata.org/wiki/Q116482353) was isolated from *[Hypericum elodeoides](https://www.wikidata.org/wiki/Q11077835)* Choisy in 2020 [@cito_usesDataFrom:Qiu2021], and its dihydropyran cyclization and C-2 quaternary stereocenter were revised by bioinspired total synthesis in 2022 [@cito_corrects:Franov2022].
+On the Wikidata item for [hyperelodione D](https://www.wikidata.org/wiki/Q116482353) ([`Q116482353`](https://www.wikidata.org/wiki/Q116482353)), both structures remain on a single record with their primary references: the 2020 proposal (`GBKDFEWPGPDDBU-HPEFMPOCSA-N`) carries `deprecated` rank with the qualifier *reason for deprecation* ([`P2241`](https://www.wikidata.org/wiki/P2241): *structural reassignment*), while the revised 2022 structure (`BYCBKRGQDGTNSG-GEAJLEHFSA-N`, updating both the planar constitution block and the stereochemical block of the InChIKey) carries `normal` rank.
+Downstream dereplication pipelines querying normal-rank statements automatically ingest the corrected structure and stereocenter, while any chemist inspecting the record sees both the original isolation proposal and the synthetic proof that revised it.
+
+![](figures/figure1_gallery.pdf){width=100%}
+
+**Figure 1. Six everyday natural products questions answered in seconds across scales, from the tree of life to a single stereocenter.**
+(A) Distribution of eight major biosynthetic classes across 19 organismal lineages (`{python} fmt(g['A_classified'])` classified compounds, `{python} g['A_time']` s).
+(B) Genera outside *Quillaja* enriched in triterpenoids similar (Tanimoto $\ge 0.90$) to *[Quillaja saponaria](https://www.wikidata.org/wiki/Q2382775)* Molina oleananes (`{python} fmt(g['B_hits'])` compounds across `{python} fmt(g['B_taxa'])` taxa, `{python} g['B_time']` s; [quillaic acid](https://www.wikidata.org/wiki/Q27108137), [`wd:Q27108137`](https://www.wikidata.org/wiki/Q27108137), inset).
+(C) Bioactive actinomycete metabolites reported in 2014–2019 (`{python} g['C_cpd']` compounds, `{python} g['C_taxa']` taxa, `{python} g['C_refs']` references, `{python} g['C_time']` s), distinguishing specific assay mechanisms (Paul Tol amber) from broad administrative or hazard lists (Wikidata grey).
+(D) Cross-kingdom distribution of amides similar ($\ge 0.85$) to [piperine](https://www.wikidata.org/wiki/Q414501) ([`wd:Q414501`](https://www.wikidata.org/wiki/Q414501)) across angiosperms (Wikidata blue) and Pleosporales fungi (Wikidata red) (`{python} g['D_hits']` compounds, `{python} g['D_time']` s).
+(E) Reuniting the phytochemistry of seven renamed medicinal plants across queried names (Wikidata red), shared records (Wikidata green), and linked/former names (Wikidata blue) via 4-switch nomenclatural closure (`{python} g['E_time']` s; [carnosic acid](https://www.wikidata.org/wiki/Q412827), [`wd:Q412827`](https://www.wikidata.org/wiki/Q412827), inset).
+(F) Structural and stereochemical revision of [hyperelodione D](https://www.wikidata.org/wiki/Q116482353) ([`Q116482353`](https://www.wikidata.org/wiki/Q116482353)), retaining both the deprecated 2020 isolation proposal (Wikidata red) and the revised 2022 synthetic structure (Wikidata green) with full provenance.
+Snapshot: `{python} n['snapshot']`.
+
+## Linked Open Data Through Four Doors: The `lotus-explore-rs` Platform, Federated Graphs, and Grounded Query Generation
+
+Storing natural product occurrences as linked open data in **Wikidata**—where each statement connects a compound item (`InChIKey`, [`P235`](https://www.wikidata.org/wiki/P235)) via *found in taxon* ([`P703`](https://www.wikidata.org/wiki/P703)) to a taxon item and via *stated in* ([`P248`](https://www.wikidata.org/wiki/P248)) to a primary reference—means that a single curated fact is not trapped in one interface.
+It can be reached through four complementary doors tailored to different workflows (\textbf{Figure 2}) and reused across specialized scientific knowledge graphs (\textbf{Figure 3}B).
+
+To give natural products chemists, biologists, and students a fast, self-contained workspace that requires no programming, we engineered the **LOTUS Explorer** (\url{https://lotus.nprod.net}; \textbf{Figure 2}B) and its underlying Rust workspace (`lotus-explore-rs`, \url{https://github.com/lotus-initiative/lotus-explore-rs}) [@cito_usesMethodIn:Rutz2026lotus; @cito_extends:Rutz2026].
+The domain vocabulary (`lotus-model`), pure SPARQL query construction (`lotus-query`), endpoint execution and resolution (`lotus-search`), curation logic (`lotus-curation`), and metadata serialization (`lotus-jsonld`) live in shared Rust crates compiled into four targets: a 475 KB brotli-compressed WebAssembly browser application that queries QLever and the Wikidata Query Service directly without an intermediate backend server, a native desktop application, an OpenAPI-documented HTTP server, and the `lotus` command-line binary.
+By default, queries execute against the weekly-indexed QLever engine (`qlever.dev/api/wikidata`) [@cito_usesMethodIn:Bast2017] for sub-second to 3 s interactive response, while a single selector or `--endpoint` flag switches to the live Wikidata Query Service (WDQS, which streams edits within minutes of deposition); a query executed in the browser Explorer and a query executed from the `lotus` CLI are therefore the exact same query, and passing `--explain` prints the generated SPARQL offline without sending a network request.
+
+Both the browser interface and `lotus search` resolve four kinds of chemical input in a single field—a Wikidata QID ([`Q23118`](https://www.wikidata.org/wiki/Q23118)), an `InChIKey` ([`P235`](https://www.wikidata.org/wiki/P235), ~0.2 s), a compound label or alias (`rdfs:label` then `skos:altLabel` across 15 language tags, while filtering out linguistic lexemes), or a SMILES/molfile structure—before executing exact, substructure, or Tanimoto similarity searches via IDSM Sachem [@cito_usesMethodIn:Galgonek2021].
+Chemists can combine these structural queries directly with monoisotopic mass bounds (`--mass-min`, `--mass-max`), publication year windows (`--year-min`, `--year-max`), exact molecular formulas (`--formula`), element-count ranges (`--carbon 10..20`, `--nitrogen`, `--oxygen`, `--phosphorus`, `--sulfur`), and halogen presence/absence rules (`--fluorine`, `--chlorine`, `--bromine`, `--iodine` set to `allowed`, `required`, or `excluded`).
+On the biological side, taxon resolution runs a fast indexed lookup on scientific names ([`P225`](https://www.wikidata.org/wiki/P225), ~0.3 s on QLever) and falls back automatically to a case-folded scan over statement-level vernacular names (`p:P1843/ps:P1843`, ~2.5 s across all 818,120 Wikidata taxon vernacular statements, of which `{python} fmt(n['vern_statement_names'])` belong to chemically investigated taxa) when a common name such as *bitterwort* is entered, reporting clearly which property matched and expanding all four bidirectional nomenclatural relationships by default.
+Results export in one click or one flag (`--format`) to `tsv`, `csv`, `json`, streaming `jsonl`, **Bioschemas `jsonld`** (`Dataset` and `MolecularEntity` records), or **reified RDF `ttl` (Turtle)** emitted directly from fetched rows without re-querying the endpoint, alongside three full-graph stewardship subcommands: `lotus export` (streaming the complete occurrence graph in bounded memory), `lotus export-pubchem-tree` (building biological, chemical, and NPClassifier JSON trees), and `lotus archive` (packaging deduplicated InChIKey-to-SMILES archives with SHA-256 checksums and Zenodo validation).
+
+Because the underlying statements use standard URIs and CC0 licensing, curating into Wikidata does not create a competing silo alongside specialist natural products repositories; instead, the same curation propagates automatically to external portals, aggregators, and domain-specific knowledge graphs (\textbf{Figure 2}A; \textbf{Figure 3}B).
+In **PubChem** (\textbf{Figure 2}A), `{python} s['pubchem_annotations']` LOTUS taxonomic occurrence records are synchronized into Section 13 (*Taxonomy*) of Compound Summary pages (last refreshed `{python} s['pubchem_updated']`), alongside bioassays, spectra, and chemical vendors [@cito_usesDataFrom:Kim2024], while **COCONUT** harvests LOTUS directly into its open structural collection [@cito_citesAsDataSource:Chandrasekhar2024] and microbial records cross-link with the **Natural Products Atlas** [@cito_citesAsDataSource:Poynton2024].
+In metabolomics and chemical ecology, these linked occurrences supply the taxonomic priors for MS/MS and NMR dereplication pipelines (`{python} fmt(n['pairs'])` candidate pairs in Taxonomically Informed Scoring and Network Annotation Propagation) [@cito_usesMethodIn:daSilva2018; @cito_usesMethodIn:Rutz2019] and serve as the taxonomic-chemical backbone for specialized RDF knowledge graphs such as **ENPKG** (which links LC–MS/MS spectral networks, SIRIUS/CSI:FingerID structural predictions, and bioassays across plant extract libraries) [@cito_usesMethodIn:Gaudry2024] and **METRIN-KG** (which integrates metabolomes with plant functional traits from TRY and biotic interactions from GloBI) [@cito_usesMethodIn:Tandon2026].
+
+The third and fourth doors—the **Question Catalogue** (\textbf{Figure 2}C) and the **SPARQL Endpoint** (\textbf{Figure 2}D)—turn plain-language research questions into reproducible graph queries over this shared infrastructure.
+Hosted in the SIB Swiss Institute of Bioinformatics RDF/SHACL `sparql-examples` standard [@cito_usesMethodIn:Willighagen2024; @cito_usesMethodIn:Bolleman2025], the Question Catalogue pairs `{python} n['catalogue_total']` plain-language questions (`{python} n['catalogue_np']` focused on natural product occurrences) with the verified SPARQL queries that answer them.
+When statistical language models are prompted in free text to list the constituents of an organism, they interpolate statistical word patterns rather than consulting evidence [@cito_agreesWith:BenderHanna2025]; by contrast, pairing the Question Catalogue with the endpoint schema grounds natural-language-to-SPARQL translation models [@cito_usesMethodIn:Bolleman2025; @cito_usesMethodIn:Smeros2026] so that a researcher's question is compiled into an exact formal query over the knowledge graph (\textbf{Figure 2}D), which engines such as QLever execute across all of Wikidata in seconds with every primary reference preserved [@cito_usesMethodIn:Bast2017].
+At the same time, four complementary layers—Wikidata property constraints ([`P2302`](https://www.wikidata.org/wiki/P2302)), deterministic pre-deposition auditing in `lotus curate`, `{python} s['zenodo_records']` versioned CC0 Zenodo releases (`data/raw/lotus-export/frozen.csv`), and a daily Mastodon curation bot (`{python} fmt(s['mastodon_posts'])` audited posts)—guard the open graph against vandalism or unverified edits (\textbf{Figure 3}B).
+
+Just as free-text prompting cannot replace formal graph queries on the retrieval side, post-hoc extraction from article PDFs cannot replace publication-time SMILES deposition on the ingestion side (\textbf{Figure 3}C).
+Across `{python} fmt(n['opsin_total'])` Wikidata chemical labels, rule-based IUPAC parsing (`OPSIN`) [@cito_usesMethodIn:Lowe2011opsin; @cito_usesDataFrom:Rutz2025wdlabels] fails on `{python} n['opsin_fail_pct']`% (`{python} fmt(n['opsin_fail'])`), and on the complete census of `{python} n['rec_n']` distinct natural products across all `{python} n['jnp_refs_2326']` *Journal of Natural Products* articles from 2023–2026 currently in the commons (`scripts/benchmark_structure_recovery.py`) [@cito_usesDataFrom:OtogoNNang2023; @cito_usesDataFrom:Laforest2023; @cito_usesDataFrom:Berger2024; @cito_usesDataFrom:Mollerke2024; @cito_usesDataFrom:Jagora2025; @cito_usesDataFrom:Jagora2026; @cito_usesDataFrom:Ozga2026], both `OPSIN` and sequence-to-sequence transformer IUPAC translators (`STOUT v2`) [@cito_usesMethodIn:Rajan2024stout] recover `0`/`{python} n['rec_n']` (`0.0%`) from the published trivial names (*subtortin A*, *viduamanide*, *nitidane*) because organism-derived trivial names encode no molecular connectivity.
+Querying chemical registries by name recovers stereo-complete InChIKeys for only `{python} n['rec_cir_e']`/`{python} n['rec_n']` (`{python} n['rec_cir_e_pct']`%) in the NCI/CADD Chemical Identifier Resolver (`{python} n['rec_cir_p']`/`{python} n['rec_n']` planar), `{python} n['rec_pubchem_e']`/`{python} n['rec_n']` (`{python} n['rec_pubchem_e_pct']`%) in PubChem PUG REST (`{python} n['rec_pubchem_p']`/`{python} n['rec_n']` planar), and `{python} n['rec_chembl_e']`/`{python} n['rec_n']` (`{python} n['rec_chembl_e_pct']`%) in ChEMBL (`{python} n['rec_chembl_p']`/`{python} n['rec_n']` planar), while deep-learning optical chemical structure recognition (`DECIMER v2.7`) [@cito_usesMethodIn:Rajan2021decimer]—evaluated under best-case upper-bound conditions on clean, isolated 300-DPI 2D depictions free of Markush R-group tables or overlaid 2D NMR (`HMBC`/`NOESY`) arrows—recovers `{python} n['rec_decimer_p']`/`{python} n['rec_n']` (`{python} n['rec_decimer_p_pct']`%) planar skeletons and `{python} n['rec_decimer_e']`/`{python} n['rec_n']` (`{python} n['rec_decimer_e_pct']`%) stereo-complete InChIKeys (reconstructing the planar constitutions of *subtortin A* and *criophylline* while scrambling their stereochemical blocks, and failing on bicyclic *Amanita* peptides).
+Even combining all five post-hoc methods together recovers at most `{python} n['rec_union_p']`/`{python} n['rec_n']` (`{python} n['rec_union_p_pct']`%) planar skeletons and `{python} n['rec_union_e']`/`{python} n['rec_n']` (`{python} n['rec_union_e_pct']`%) stereo-complete structures, whereas author-deposited 2027 *Journal of Natural Products* Supporting Information SMILES validated by `lotus curate` resolve `{python} n['rec_n']`/`{python} n['rec_n']` (`100%`) stereo-complete InChIKeys in `< 0.05 s` (\textbf{Figure 3}C).
+
+![](figures/figure2_doors.pdf){width=100%}
+
+**Figure 2. One linked open data statement in Wikidata accessed through four doors.**
+The top diagram (accented with the official Wikidata barcode palette: red `#990000`, green `#339966`, blue `#006699`, grey `#484848`) shows the underlying RDF statement on [amarogentin](https://www.wikidata.org/wiki/Q3613679) ([`wd:Q3613679`](https://www.wikidata.org/wiki/Q3613679)), linking its InChIKey ([`P235`](https://www.wikidata.org/wiki/P235)) via *found in taxon* (`wdt:P703`) to *[Gentiana lutea](https://www.wikidata.org/wiki/Q158572)* L. ([`wd:Q158572`](https://www.wikidata.org/wiki/Q158572)) and six additional *Gentiana*, *Gentianella*, and *Swertia* species supported by 19 primary references (*stated in*, `pr:P248`).
+Below, the same statement is reached across four interfaces: (A) **PubChem** (CID 115149, Section 13 *Taxonomy*); (B) **LOTUS Explorer & CLI** (\url{https://lotus.nprod.net}, `lotus-explore-rs`), providing zero-code structure/taxon/element search, 4-switch synonym expansion, Bioschemas/RDF exports, and human-in-the-loop curation (`lotus curate`); (C) **Question Catalogue**, pairing `{python} n['catalogue_total']` plain-language questions with SHACL-documented queries for human adaptation and SPARQL query generation; and (D) **SPARQL Endpoint**, executing the formal graph query directly on QLever or WDQS.
+
+![](figures/figure3_generations.pdf){width=100%}
+
+**Figure 3. Two millennia of natural products transmission, the downstream reach of one curated statement, and why post-hoc structure extraction cannot replace 2027 Supporting Information SMILES.**
+(A) Fifteen historical milestones from Dioscorides (ca. 60 CE) to the 2027 *Journal of Natural Products* data-accessibility policy, mapped across the four epistemological generations of pharmacognosy [@cito_extends:Allard2018] and regimes of transmission.
+(B) Quantitative propagation of a single curated Wikidata statement (`compound` – *found in taxon* [`P703`](https://www.wikidata.org/wiki/P703) – *stated in* [`P248`](https://www.wikidata.org/wiki/P248)) across specialized natural products graphs (ENPKG, METRIN-KG), MS/NMR dereplication priors (TIS, NAP), the LOTUS Explorer, PubChem, Zenodo/Mastodon daily quality control, and the SPARQL Question Catalogue on `{python} s['date']`.
+(C) Multi-tool structure recovery benchmark across `{python} n['rec_n']` recent *Journal of Natural Products* natural products (2023–2026; `scripts/benchmark_structure_recovery.py`) and `{python} fmt(n['opsin_total'])` Wikidata chemical labels [@cito_usesDataFrom:Rutz2025wdlabels], comparing stereo-complete InChIKey recovery (27-character match, filled circles) and planar constitution recovery (first-block match, open circles) across `OPSIN`/`STOUT v2`/`NCI CIR` name parsers (`{python} n['rec_cir_e']`/`{python} n['rec_n']` stereo; `{python} n['opsin_fail_pct']`% OPSIN failure on 1.34M labels), `PubChem PUG REST` (`{python} n['rec_pubchem_e']`/`{python} n['rec_n']`), `DECIMER v2.7` optical chemical structure recognition on 2D drawings (`{python} n['rec_decimer_e']`/`{python} n['rec_n']` stereo, `{python} n['rec_decimer_p']`/`{python} n['rec_n']` planar), `ChEMBL v34` (`{python} n['rec_chembl_e']`/`{python} n['rec_n']`), the ensemble union of all five post-hoc tools (`{python} n['rec_union_e']`/`{python} n['rec_n']` stereo, `{python} n['rec_union_p']`/`{python} n['rec_n']` planar), and author-deposited 2027 Supporting Information SMILES validated by `lotus curate` (`{python} n['rec_n']`/`{python} n['rec_n']`, `100%`).
+
+## What Is Known, and What Is Missing
+
+As of `{python} n['snapshot']`, the open commons comprises `{python} fmt(n['pairs'])` referenced structure–organism pairs (`{python} fmt(n['triplets'])` triplets), connecting `{python} fmt(n['compounds'])` unique chemical structures (`{python} fmt(n['connectivities'])` planar skeletons) across `{python} fmt(n['taxa'])` organisms backed by `{python} fmt(n['references'])` primary publications.
+After *Phytochemistry* (`{python} fmt(n['phytochem_pairs'])` pairs from `{python} fmt(n['phytochem_refs'])` articles), the *Journal of Natural Products* is the second largest pillar of this commons, contributing `{python} fmt(n['jnp_pairs'])` pairs (`{python} n['jnp_pct']`%) across `{python} fmt(n['jnp_refs'])` articles.
+Auditing the graph with open queries reveals four structural blind spots that define the priorities for fourth-generation pharmacognosy (\textbf{Figure 4}).
+
+**Taxonomic coverage is shallow and skewed toward human utility (\textbf{Figure 4}A).**
+Across described species in Wikidata, only `{python} n['plant_pct']`% (`{python} fmt(n['plant_investigated'])` of `{python} fmt(n['plant_species'])`) of vascular plants carry even a single referenced molecule, alongside `{python} n['fungi_pct']`% (`{python} fmt(n['fungi_inv'])`) of fungi, `{python} n['bacteria_pct']`% (`{python} fmt(n['bacteria_inv'])`) of bacteria, and `{python} n['animals_pct']`% (`{python} fmt(n['animals_inv'])`) of animals.
+By contrast, `{python} n['medicinal_inv_pct']`% (`{python} fmt(n['medicinal'])` of `{python} fmt(n['medicinal_all'])`) of taxa documented as medicinal plants have been chemically investigated—an 11-fold enrichment over vascular plants overall.
+Reading the current occurrence graph as an unbiased census of nature is therefore a sampling fallacy: whether a metabolite is recorded in a species reflects ethnomedical interest, accessibility, extraction protocol, and analytical window as strongly as biosynthetic capacity [@cito_usesDataFrom:Graham2024; @cito_citesAsAuthority:Bisson2015].
+
+**Both organisms and compounds follow steep power-law tails, making the reporting of known compounds vital (\textbf{Figure 4}B).**
+Plotting the degree distributions of the bipartite compound–organism graph on logarithmic axes exposes two complementary long tails.
+On the organism side, `{python} n['taxa_le5_pct']`% of studied taxa have five or fewer reported compounds, and `{python} fmt(n['taxa_single'])` taxa (`{python} n['taxa_single_pct']`%) have just one.
+Even more striking is the compound distribution: **`{python} n['cpd_single_pct']`% (`{python} fmt(n['cpd_single'])` of `{python} fmt(n['compounds'])`) of all natural products in the commons are linked to only a single organism (`n_taxa = 1`)**.
+While many specialized metabolites are genuinely lineage-specific, much of this singleton excess is an artifact of publication practice: when an isolation study characterizes three new derivatives alongside ten known compounds from a newly studied species, the known compounds are often mentioned only in passing in the Experimental Section without machine-readable identifiers.
+Because taxonomically informed MS/MS scoring [@cito_usesMethodIn:Rutz2019], network annotation propagation [@cito_usesMethodIn:daSilva2018], and chemotaxonomic models rely on shared scaffolds across related taxa to propagate structural priors, every unreported "known" compound deprives the community of the exact bridge needed to connect singleton structures across the tree of life.
+
+**Stereochemical completeness is high, but anatomical and ecological context is almost absent (\textbf{Figure 4}A; \textbf{Figure 6}B).**
+While `{python} n['iso_pct']`% (`{python} fmt(n['iso_compounds'])` structures) carry an isomeric SMILES ([`P2017`](https://www.wikidata.org/wiki/P2017)) specifying 3D stereochemistry, biological context on literature occurrences has barely been touched: only `{python} n['qual_statements']` occurrence statements (`0.01%`) carry any context qualifier and just `{python} n['qual_part']` specify an anatomical part ([`P518`](https://www.wikidata.org/wiki/P518), such as root, leaf, or fruiting body).
+Because specialized metabolites are partitioned sharply across organs, developmental stages, and microbial symbionts, recording the isolated organ or culture condition in Supporting Information spreadsheets—and linking literature occurrences with sample-centric metabolomics graphs such as ENPKG and METRIN-KG [@cito_extends:Allard2018; @cito_usesMethodIn:Gaudry2024; @cito_usesMethodIn:Tandon2026]—is essential to move from species-level checklists to contextualized biology.
+
+**Taxonomic revisions scatter chemistry across four independent nomenclatural relationships (\textbf{Figure 4}C; \textbf{Table 1}).**
+Across `{python} fmt(n['bas_taxa'])` studied taxa linked directly to a basionym ([`P566`](https://www.wikidata.org/wiki/P566)), `{python} fmt(n['bas_other'])` compound occurrences (`{python} n['bas_miss_pct']`%) reside solely on the basionym item compared with `{python} fmt(n['bas_cur'])` on the accepted name.
+In designing `lotus-explore-rs`, we kept *taxonomic judgement* ([`P1420`](https://www.wikidata.org/wiki/P1420) / [`P12763`](https://www.wikidata.org/wiki/P12763) accepted name $\leftrightarrow$ synonym, which carries no chronology and can change as systematics advances) separate from *nomenclatural fact* ([`P566`](https://www.wikidata.org/wiki/P566) / [`P12766`](https://www.wikidata.org/wiki/P12766) basionym $\leftrightarrow$ new combination, [`P1403`](https://www.wikidata.org/wiki/P1403) / [`P12765`](https://www.wikidata.org/wiki/P12765) original combination $\leftrightarrow$ protonym, and [`P694`](https://www.wikidata.org/wiki/P694) / [`P12764`](https://www.wikidata.org/wiki/P12764) replacement name / *nomen novum* $\leftrightarrow$ replaced homonym), and we traverse all eight predicates in both directions inside a dedicated seed subquery before descending the parent-taxon hierarchy (`wdt:P171*`) (\textbf{Table 1}).
+Each of the four switches rescues real organisms that the other three miss: turning off [`P1420`](https://www.wikidata.org/wiki/P1420)/[`P12763`](https://www.wikidata.org/wiki/P12763) drops *[Leontopodium nivale](https://www.wikidata.org/wiki/Q178265)* from `{python} n['edelweiss_uni']` compounds to 0; turning off [`P566`](https://www.wikidata.org/wiki/P566)/[`P12766`](https://www.wikidata.org/wiki/P12766) drops *[Houpoea officinalis](https://www.wikidata.org/wiki/Q92823857)* from `{python} n['magnolia_bas']` to 0; turning off [`P1403`](https://www.wikidata.org/wiki/P1403)/[`P12765`](https://www.wikidata.org/wiki/P12765) misses the [saxitoxin](https://www.wikidata.org/wiki/Q412694) records uniting *[Gonyaulax tamarensis](https://www.wikidata.org/wiki/Q104396170)* (`{python} n['dino_old']` compounds) with *[Alexandrium tamarense](https://www.wikidata.org/wiki/Q2834271)* (`{python} n['dino_uni']`); and turning off [`P694`](https://www.wikidata.org/wiki/P694)/[`P12764`](https://www.wikidata.org/wiki/P12764) severs *[Salvia rosmarinus](https://www.wikidata.org/wiki/Q102240169)* (`{python} g['E_new']` compounds) from *[Rosmarinus officinalis](https://www.wikidata.org/wiki/Q122679)* (`{python} g['E_unified']` unified).
+At the genus rank, expanding the nomenclatural closure in a seed subquery before descending `wdt:P171*` unites *Rosmarinus* (`{python} n['ros_genus_old']` compounds across 3 taxa when off) and *Salvia* (2,131 compounds across 216 taxa when off) into the identical clade (`{python} fmt(n['ros_genus_uni'])` compounds across 246 taxa), and recovers more compounds across large orders such as *Gentianales* (11,088 vs. 11,009) than interleaving `(P171*|SYN*)`.
+Conversely, *hybrid parentage* ([`P1531`](https://www.wikidata.org/wiki/P1531)) is deliberately excluded (and locked out by automated tests) so that querying a hybrid (*Nepeta $\times$ catariensis*) never falsely inherits the metabolome of its parent (*[Nepeta cataria](https://www.wikidata.org/wiki/Q161139)*).
+
+**Biocultural vernacular links require statement-level stewardship (\textbf{Figure 4}D).**
+Over 75% of documented medicinal plant uses in global biodiversity hotspots are recorded in a single language [@cito_obtainsBackgroundFrom:CamaraLeret2021], and in Amazonia the loss of threatened Indigenous languages is projected to erase roughly a quarter of regional ethnobotanical knowledge [@cito_obtainsBackgroundFrom:CamaraLeret2026].
+In the commons, `{python} fmt(n['vern_taxa'])` studied taxa (`{python} n['vern_pct']`%) carry `{python} fmt(n['vern_statement_names'])` vernacular name statements across `{python} n['vern_langs']` language tags (\textbf{Figure 4}D), linking local plant names to chemical structures.
+Here too, graph query architecture is decisive: reading only "truthy" triples (`wdt:P1843`) returns `{python} fmt(n['vern_truthy_names'])` names and silently drops `{python} fmt(n['vern_hidden_names'])` valid vernacular names whenever one name on a taxon is marked `preferred` rank (for *[Gentiana lutea](https://www.wikidata.org/wiki/Q158572)*, a truthy query returns 1 name and masks 71 others, hiding *bitterwort* and *yellow gentian*), which is why the LOTUS Explorer traverses full statement paths (`p:P1843/ps:P1843`) with case-folded lexical matching (`LCASE(STR())`).
+Stewarding these links responsibly requires pairing the FAIR principles with the CARE principles for Indigenous data governance and the Nagoya Protocol [@cito_usesMethodIn:Wilkinson2016; @cito_usesMethodIn:Carroll2020; @cito_citesAsAuthority:Nagoya2010].
+
+```{python}
+#| echo: false
+#| output: asis
+print(rf"""
+\begin{{table}}[!htbp]
+\caption{{\textbf{{Four bidirectional nomenclatural switches that reunite natural products across taxonomic revisions.}} Each relationship is traversed in both directions in the LOTUS Explorer (\texttt{{lotus-explore-rs}}, while hybrid parentage, \texttt{{P1531}}, is excluded). Columns report compound occurrences across the commons stored solely under the linked name and compound counts before ($\rightarrow$ after) enabling the closure on five representative taxa.}}
+\label{{tab:nomenclature}}
+\small
+\begin{{tabular}}{{p{{3.5cm}}p{{2.1cm}}p{{2.5cm}}p{{4.3cm}}r}}
+\toprule
+Nomenclatural relationship & Wikidata properties & Split in commons & Representative example & Queried $\rightarrow$ unified \\
+\midrule
+Taxon synonym $\leftrightarrow$ accepted name & \texttt{{P1420}} / \texttt{{P12763}} & {fmt(n['sw_syn_occ'])}\ occ.\ ({fmt(n['sw_syn_taxa'])}\ taxa) & \emph{{Leontopodium nivale}} $\leftrightarrow$ \emph{{Leontopodium alpinum}} & $0 \rightarrow {n['edelweiss_uni']}$ \\
+Basionym $\leftrightarrow$ new combination & \texttt{{P566}} / \texttt{{P12766}} & {fmt(n['sw_bas_occ'])}\ occ.\ ({fmt(n['sw_bas_taxa'])}\ taxa) & \emph{{Houpoea officinalis}} $\leftrightarrow$ \emph{{Magnolia officinalis}} & $0 \rightarrow {n['magnolia_bas']}$ \\
+Protonym $\leftrightarrow$ original combination & \texttt{{P1403}} / \texttt{{P12765}} & {fmt(n['sw_pro_occ'])}\ occ.\ ({fmt(n['sw_pro_taxa'])}\ taxa) & \emph{{Gonyaulax tamarensis}} $\leftrightarrow$ \emph{{Alexandrium tamarense}} & ${n['dino_old']} \rightarrow {n['dino_uni']}$ \\
+Replacement name (\emph{{nomen novum}}) & \texttt{{P694}} / \texttt{{P12764}} & {fmt(n['sw_nov_occ'])}\ occ.\ ({fmt(n['sw_nov_taxa'])}\ taxa) & \emph{{Salvia rosmarinus}} $\leftrightarrow$ \emph{{Rosmarinus officinalis}} & ${g['E_new']} \rightarrow {g['E_unified']}$ \\
+Genus synonym + child taxa & \texttt{{P1420}} + \texttt{{P171*}} & clade-level seed closure & \emph{{Rosmarinus}} $\leftrightarrow$ \emph{{Salvia}} (genera) & ${n['ros_genus_old']} \rightarrow {fmt(n['ros_genus_uni'])}$ \\
+\bottomrule
+\end{{tabular}}
+\end{{table}}
+""")
+```
+
+![](figures/figure4_known.pdf){width=100%}
+
+**Figure 4. What is known and what is missing in the natural products commons.**
+(A) Species-level chemical coverage across major clades (Wikidata green) contrasted with documented medicinal plants (Paul Tol amber, 11-fold enriched).
+(B) Dual log–log power-law distributions of compounds per organism (Wikidata blue; `{python} n['taxa_le5_pct']`% of studied taxa have $\le 5$ compounds) and organisms per compound (Wikidata red; `{python} n['cpd_single_pct']`% of compounds, `{python} fmt(n['cpd_single'])`, are reported from only a single organism).
+(C) Compound occurrences stored solely under linked names across the four bidirectional nomenclatural switches ([`P1420`](https://www.wikidata.org/wiki/P1420)/[`P12763`](https://www.wikidata.org/wiki/P12763), [`P566`](https://www.wikidata.org/wiki/P566)/[`P12766`](https://www.wikidata.org/wiki/P12766), [`P1403`](https://www.wikidata.org/wiki/P1403)/[`P12765`](https://www.wikidata.org/wiki/P12765), and [`P694`](https://www.wikidata.org/wiki/P694)/[`P12764`](https://www.wikidata.org/wiki/P12764)).
+(D) Top 10 of `{python} n['vern_langs']` vernacular language tags across `{python} fmt(n['vern_taxa'])` studied taxa, with inset showing how statement-level querying (`p:P1843/ps:P1843`) rescues `{python} fmt(n['vern_hidden_names'])` rank-masked vernacular names.
+
+## The Flow Has Stopped: Human-in-the-Loop Curation and One Column More in 2027
+
+Our sharpest finding concerns the temporal inflow of literature (\textbf{Figure 5}).
+Plotting newly referenced organism–structure pairs by the year of their earliest supporting publication shows a climb from the 1950s to a `{python} n['pairs_peak_year']` peak (`{python} fmt(n['pairs_peak_val'])` new pairs), followed by a cliff-edge drop immediately after the 2022 LOTUS bulk import (\textbf{Figure 5}A): `{python} fmt(n['pairs_2019'])` pairs first reported in 2019 entered the commons, compared with just `{python} fmt(n['pairs_2023_2026'])` pairs in total across 2023–2026.
+Benchmarking the commons against Crossref publication counts for the *Journal of Natural Products* pinpoints the bottleneck (\textbf{Figure 5}B): `{python} n['jnp_cov_9804']`% of articles published in this Journal between 1998 and 2004 are cited as the source of at least one occurrence in the commons, `{python} n['jnp_cov_1620']`% in 2016–2020, and only **`{python} n['jnp_cov_2326']`% (`{python} n['jnp_refs_2326']` of `{python} fmt(n['jnp_articles_2326'])` articles) in 2023–2026**.
+Meanwhile, just two journals—*Phytochemistry* (`{python} fmt(n['phytochem_pairs'])` pairs) and the *Journal of Natural Products* (`{python} fmt(n['jnp_pairs'])` pairs)—supply `{python} round(100 * (n['phytochem_pairs'] + n['jnp_pairs']) / n['pairs'], 1)`% of all referenced pairs in the commons (\textbf{Figure 5}C), ahead of *Chemical & Pharmaceutical Bulletin* (`{python} fmt(n['cpb_pairs'])`), *Planta Medica* (`{python} fmt(n['planta_med_pairs'])`), and *Chemistry of Natural Compounds* (`{python} fmt(n['cnc_pairs'])`).
+Natural products discovery did not slow down after 2022; retrospective extraction ceased to feed the open graph [@cito_extends:Rutz2026].
+
+![](figures/figure5_flow.pdf){width=100%}
+
+**Figure 5. The post-2022 literature drought and how the 2027 Supporting Information policy reopens the flow.**
+(A) Newly referenced organism–structure pairs by year of first report (1950–2026), showing the collapse from `{python} fmt(n['pairs_2019'])` pairs in 2019 to `{python} fmt(n['pairs_2023_2026'])` pairs across 2023–2026 after the 2022 LOTUS bulk import.
+(B) Percentage of *Journal of Natural Products* articles (Crossref) cited in the commons by publication year: `{python} n['jnp_cov_9804']`% in 1998–2004 versus `{python} n['jnp_cov_2326']`% (`{python} n['jnp_refs_2326']` of `{python} fmt(n['jnp_articles_2326'])` articles) in 2023–2026, with projected recovery under the 2027 SI spreadsheet policy and inset structure of subtortin A (*[Cortinarius subtortus](https://www.wikidata.org/wiki/Q10475342)*, *J. Nat. Prod.* 2026) [@cito_usesDataFrom:Ozga2026].
+The 2005 spike (`{python} n['jnp_2005_refs']` cited vs. `{python} n['jnp_2005_articles']` print articles) reflects online-archive posting dates.
+(C) Top 10 journals in the natural products commons by referenced organism–structure pairs (*Phytochemistry* and *J. Nat. Prod.* supply 44.3% of all pairs).
+
+Retrospective scraping of PDFs and chemical schemes is no substitute for capturing structured data from authors at publication.
+Beginning in January 2027, every manuscript in the *Journal of Natural Products* must include a Supporting Information spreadsheet listing the compound number and machine-readable SMILES string for each numbered compound [@cito_extends:Linington2026], placing every newly published structure into the public domain on day one [@cito_agreesWith:Steffen2025; @cito_extends:Linington2026].
+
+Yet a SMILES string alone records a molecule, not a natural product.
+In the spirit of the Editors' invitation to establish a shareable format [@cito_extends:Linington2026], we offer to collaborate with the *Journal of Natural Products* on a simple addendum to the 2027 Supporting Information spreadsheet: recording, alongside `Compound_ID` and `Isomeric_SMILES` [@cito_citesAsAuthority:Goodman2021], **the source organism** as a plain-text scientific binomial (`organism`), together with optional voucher/strain code, anatomical part or culture/host condition, and `new`/`known` status (\textbf{Table 2}).
+Crucially, authors never need to look up database identifiers by hand: typing the scientific binomial (such as *[Cortinarius subtortus](https://www.wikidata.org/wiki/Q10475342)*) is sufficient because `lotus curate` resolves the corresponding Wikidata, NCBI Taxonomy, GBIF, or WFO identifier automatically across all four nomenclatural switches.
+**Including known re-isolated compounds in the same spreadsheet is just as vital as recording new ones**: as shown in \textbf{Figure 4}B, `{python} n['cpd_single_pct']`% of compounds in the commons are currently single-taxon orphans, and every confirmed re-isolation in another species directly enriches chemotaxonomic and MS/NMR dereplication priors.
+
+To make pre-submission validation effortless and safe, we built `lotus curate` (available both in the browser Curation tab of the LOTUS Explorer and on the command line via `lotus curate findings.tsv`).
+Given a spreadsheet containing `name` and `smiles` (plus optional `taxon` or `organism` and `doi` columns), `lotus curate` canonicalizes each structure to its InChIKey (so equivalent SMILES strings such as `CCO` and `OCC` are recognized as one molecule), refuses bare genus names when a species is required, and classifies every row into one of six explicit states: `existing_complete` (compound and occurrence already in Wikidata), `existing_updates` (compound present, occurrence missing), `new_compound`, `pending_dependencies`, `not_checked`, or `error` (crucially distinguishing a failed lookup from a genuinely new compound so duplicates are never minted by mistake).
+The schema also accommodates two routine nuances of natural products isolation: when only relative configuration is established by NOESY/ROESY or $J$-based analysis (or when a compound exhibits axial chirality/atropisomerism or tautomeric equilibrium not distinguished by the standard InChI v1.06 stereochemical block [@cito_citesAsAuthority:Goodman2021]), pairing the full `Isomeric_SMILES` ([`P2017`](https://www.wikidata.org/wiki/P2017), or CXSMILES enhanced stereochemistry) with the experimental determination method (`evidence` / [`P459`](https://www.wikidata.org/wiki/P459), e.g., `relative configuration (NOESY)` vs. `absolute configuration (ECD; X-ray; Mosher)`) prevents relative assignments from being conflated with proven single enantiomers; likewise, for host-associated microbes, endophytes, or marine holobionts, recording the immediate producer in `organism` and the host substrate in `part_or_condition` preserves both sides of the symbiosis.
+By design, `lotus curate` has no `--apply` flag: it emits separated QuickStatements blocks (compound, occurrence, reference) for human review so that an uncreated taxon never aborts compound deposition and no script ever pushes unreviewed edits automatically.
+
+The `{python} n['jnp_refs_2326']` *Journal of Natural Products* articles from 2023–2026 already in the commons (`{python} n['jnp_rec_pairs']` pairs across `{python} n['jnp_rec_taxa']` organisms; `si/jnp_example_2027_submission.tsv`) illustrate how compact this table is across fungi, arthropods, and plants (\textbf{Table 2}).
+They span the malabaricane triterpenoids subtortins A–C from the basidiomycete *[Cortinarius subtortus](https://www.wikidata.org/wiki/Q10475342)* (Pers.) Fr. (\textbf{Figure 5}B inset) [@cito_usesDataFrom:Ozga2026], the cycloamanide peptide viduamanide from *[Amanita vidua](https://www.wikidata.org/wiki/Q141169100)* Gasch, G.Moreno & P.-A.Moreau [@cito_usesDataFrom:Jagora2026] and bicyclic octapeptides from European *Amanita* sect. *Phalloideae* species [@cito_usesDataFrom:Jagora2025], the irregular prenylated diterpene nitidane from the cuticle of the springtail *[Heteromurus nitidus](https://www.wikidata.org/wiki/Q10523441)* (Templeton, 1835) [@cito_usesDataFrom:Mollerke2024], cyclic peptides endolides E and F from the marine-sponge-derived fungus *[Stachylidium bicolor](https://www.wikidata.org/wiki/Q10676916)* Link [@cito_usesDataFrom:Berger2024], and new criophylline bisindole alkaloids reported alongside known [tabersonine](https://www.wikidata.org/wiki/Q21099578) and corynanthe alkaloids from *[Callichilia inaequalis](https://www.wikidata.org/wiki/Q15397151)* Stapf [@cito_usesDataFrom:OtogoNNang2023] and *[Mitragyna speciosa](https://www.wikidata.org/wiki/Q139698)* (Korth.) Havil. [@cito_usesDataFrom:Laforest2023].
+Running `lotus curate` on `si/jnp_example_2027_submission.tsv` verifies header and column integrity in `< 0.05 s` offline (`--offline`) and resolves all 12 representative rows to `existing_complete` against Wikidata (with local RDKit WebAssembly canonicalization in the browser Explorer eliminating remote structure-conversion round-trips), turning every Supporting Information file into a complete linked open occurrence record that the Natural Products Atlas [@cito_citesAsDataSource:Poynton2024], PubChem [@cito_usesDataFrom:Kim2024], COCONUT [@cito_citesAsDataSource:Chandrasekhar2024], ENPKG [@cito_usesMethodIn:Gaudry2024], METRIN-KG [@cito_usesMethodIn:Tandon2026], and Wikidata/LOTUS can harvest on the day of publication.
+
+```{=latex}
+\begin{table}[!htbp]
+\caption{\textbf{From chemical structures to natural products: adding the source organism to the 2027 Supporting Information spreadsheet.} Combining the two columns required from January 2027 (\texttt{compound\_number}, \texttt{smiles}) \cite{Linington2026} with the plain-text source organism (automatically resolved to its taxon identifier by \texttt{lotus curate}), voucher or strain code, anatomical part or culture/host condition, and \texttt{new}/\texttt{known} status turns each Supporting Information file into a day-one linked open occurrence record, illustrated with four recent \emph{Journal of Natural Products} entries spanning fungi, arthropods, and plants (computed from \texttt{si/jnp\_example\_2027\_submission.tsv}).}
+\label{tab:si2027}
+\small
+\begin{tabular}{p{2.0cm}p{2.95cm}p{2.35cm}p{2.85cm}p{1.45cm}p{1.2cm}}
+\toprule
+\multicolumn{2}{l}{\textbf{2027 JNP requirement} \cite{Linington2026}} & \multicolumn{4}{l}{\textbf{Proposed LOTUS addendum (organism, voucher \& context)}} \\
+\cmidrule(lr){1-2} \cmidrule(lr){3-6}
+Compound & Isomeric SMILES & Source organism & Taxon ID \& voucher & Part / cond. & Status \\
+\midrule
+\textbf{1} (subtortin A) & \texttt{CC(=O)O[C@@H]..} & \emph{Cortinarius subtortus} & \texttt{wd:Q10475342} (fruiting body voucher) & fruiting body & new \cite{Ozga2026} \\
+\textbf{4} (viduamanide) & \texttt{CC(C)C[C@@H]..} & \emph{Amanita vidua} & \texttt{wd:Q141169100} (fungarium specimen) & fruiting body & new \cite{Jagora2026} \\
+\textbf{5} (nitidane) & \texttt{CC(C)=CCC\textbackslash C...} & \emph{Heteromurus nitidus} & \texttt{wd:Q10523441} (lab.\ population) & cuticle & new \cite{Mollerke2024} \\
+\textbf{8} (criophylline) & \texttt{CC[C@@]12CC...} & \emph{Callichilia inaequalis} & \texttt{wd:Q15397151} (alkaloid collection) & root bark & known \cite{OtogoNNang2023} \\
+\bottomrule
+\end{tabular}
+\end{table}
+```
+
+## Toward a Flourishing Commons
+
+Extending the *virtuous cycle* of spectral identification [@cito_extends:Allard2017] to the entire lifecycle of a natural products observation across all four generations of pharmacognosy [@cito_extends:Allard2018] shows clearly where community action is needed (\textbf{Figure 6}A).
+The downstream half of the cycle—validating occurrences with `lotus curate`, minting RDF statements in Wikidata, exploring them across synonyms in the LOTUS Explorer, propagating them to PubChem, ENPKG, and METRIN-KG, and grounding SPARQL query generation—already runs continuously.
+The bottleneck lies at the upstream handoff between publication and deposition (\textbf{Figure 6}B).
+We define ten measurable milestones for 2030 that can be tracked directly by re-running the open queries of this study (\textbf{Table 3}).
+
+![](figures/figure6_circle.pdf){width=100%}
+
+**Figure 6. From the 2027 Supporting Information spreadsheet to the four doors, and measurable 2030 targets.**
+(A) Three-tier publication-time curation architecture extending the virtuous cycle of metabolite identification [@cito_extends:Allard2017; @cito_extends:Allard2018]: (1) authors record isomeric SMILES, source organisms, vouchers, organs, and known re-isolated compounds in the 2027 Supporting Information spreadsheet; (2) `lotus curate` performs deterministic pre-submission validation across six row states (`existing_complete`, `existing_updates`, `new_compound`, `pending_dependencies`, `not_checked`, `error`) and emits human-reviewed QuickStatements; and (3) minted RDF statements (`compound` – [`P703`](https://www.wikidata.org/wiki/P703) – `taxon` – [`P248`](https://www.wikidata.org/wiki/P248) – `DOI`) propagate on day one across the four doors of access and specialized natural products graphs to power future isolation and dereplication campaigns.
+(B) Cleveland dumbbell comparison of measured 2026 empirical baselines (Wikidata red) and 2030 community targets (Wikidata green) across five core bottlenecks.
+
+```{python}
+#| echo: false
+#| output: asis
+print(rf"""
+\begin{{table}}[!htbp]
+\caption{{\textbf{{Measurable milestones toward a flourishing natural products commons.}} Baselines are measured on the open commons (snapshot {n['snapshot']}); targets are proposals for 2030.}}
+\label{{tab:milestones}}
+\small
+\begin{{tabular}}{{p{{3.1cm}}p{{3.6cm}}p{{4.6cm}}p{{2.5cm}}}}
+\toprule
+Milestone & Baseline (2026) & Target (2030) & Who acts \\
+\midrule
+Occurrences deposited at publication & {n['jnp_cov_2326']}\% of JNP articles since 2023 cited in the commons & Most new articles harvested into open resources within 30 days of publication & Authors, journals, resources \\
+Stereo-complete SMILES + organism in SI & {n['iso_pct']}\% of compounds with stereochemistry; SMILES in JNP SI from 2027 & Isomeric SMILES with source organism for every numbered compound (new and known) & Authors, JNP editors \\
+Organisms as resolvable IDs and vouchers & Taxa named in free text; vouchers rarely linked & Every new report linked to a taxon identifier and herbarium or culture voucher & Authors, herbaria, collections \\
+Context and searched absences recorded & At most {n['qual_statements']} qualified occurrences; absences unreported & A minimum information standard for occurrences, including organ and absences & Community, standards bodies \\
+Literature and metabolomics graphs linked & Literature occurrences and spectral graphs (ENPKG, METRIN-KG) partly separate & Annotated detections in ENPKG/METRIN-KG/GNPS linked to occurrences with confidence & Repositories, tool developers \\
+Names that travel across revisions & {fmt(n['bas_other'])} occurrences filed only under basionyms & All search and dereplication tools follow synonyms and basionyms by default & Taxonomists, tool developers \\
+Questions written down for humans and models & {n['catalogue_np']} natural products questions in the catalogue & Every question answered in a computational or review study added to the catalogue & Authors, educators, query-tool builders \\
+Multilingual vernacular and chemical access & {fmt(n['vern_statement_names'])} vernacular statements across {n['vern_langs']} languages & Statement-level vernacular and chemical search across $>300$ languages & Wikimedians, ethnobotanists, chemists \\
+Academic credit for curation & Community curation rarely cited or counted & Curation attributed via persistent identifiers and valued in hiring and funding & Funders, institutions \\
+Respect for biocultural knowledge holders & Provenance of traditional knowledge rarely structured & CARE- and Nagoya-aligned provenance and benefit sharing on ethnobotanical records & All, with knowledge holders \\
+\bottomrule
+\end{{tabular}}
+\end{{table}}
+\clearpage
+""")
+```
+
+# Conclusions
+
+Natural products researchers no longer have to choose between weeks of manual literature searching, commercial database subscriptions, and writing code to know what is known.
+Through the **LOTUS Explorer** (\url{https://lotus.nprod.net}), its unified Rust command-line and curation suite (`lotus-explore-rs`), and the linked open data commons in Wikidata, any investigator can map biosynthetic classes across the tree of life, filter structures by similarity, formula, or halogen content, reunite compound histories split across four nomenclatural relationships, and trace stereochemical reassignments with full bibliographic provenance in seconds.
+Because a single curated statement feeds PubChem, specialized metabolomics and ecological knowledge graphs (ENPKG, METRIN-KG), MS/MS and NMR dereplication priors (TIS, NAP), multilingual vernacular and chemical search across 330 languages, and a catalogue of plain-language questions that ground SPARQL query generation, every addition or correction strengthens the entire discipline at once.
+
+Yet our audit also demonstrates how quickly a commons stagnates when it depends on one-off retrospective imports: only `{python} n['plant_pct']`% of vascular plant species have a referenced compound, `{python} n['cpd_single_pct']`% of all recorded molecules appear as single-organism orphans, anatomical context is present on `0.01%` of occurrences, and the share of *Journal of Natural Products* articles entering the commons has fallen from `{python} n['jnp_cov_9804']`% (1998–2004) to `{python} n['jnp_cov_2326']`% since 2023.
+The Renaissance herbals endured because every physician and botanist who consulted them also took responsibility for amending their margins.
+Recording both new and known re-isolated compounds as stereo-complete SMILES paired with their source organism, voucher, and anatomical part in the 2027 Supporting Information spreadsheet—and checking them in seconds with `lotus curate`—converts a static PDF into a permanent, linked discovery record.
+We invite readers to explore their own organisms and scaffolds in the LOTUS Explorer, and we look forward to working with the Editors of the *Journal of Natural Products* to add the source organism to the 2027 Supporting Information spreadsheet so that every newly published study across the tree of life enters this living pharmacopeia on the day it appears.
+
+# Experimental Section
+
+## Data Sources and Full Export
+
+Occurrence, chemical, taxonomic, and bibliographic data were retrieved from Wikidata [@cito_extends:Rutz2022; @cito_usesDataFrom:Vrandecic2014] through the public QLever SPARQL endpoint (\url{https://qlever.dev/api/wikidata}) [@cito_usesMethodIn:Bast2017] on `{python} n['snapshot']` using `scripts/fetch_sparql.py`.
+A structure–organism pair was defined as a chemical compound item carrying an InChIKey ([`P235`](https://www.wikidata.org/wiki/P235)) and a *found in taxon* ([`P703`](https://www.wikidata.org/wiki/P703)) statement; a referenced pair additionally required a *stated in* ([`P248`](https://www.wikidata.org/wiki/P248)) primary reference on that statement.
+The complete set of `{python} fmt(n['triplets'])` structure–organism–reference triplets, together with taxon ranks, reference publication dates, and journals, was exported using the streaming Rust `lotus export` command of `lotus-explore-rs` (\url{https://github.com/lotus-initiative/lotus-explore-rs}) and summarized with DuckDB via `scripts/summarise_export.py` (`scripts/summarise_export.sql` and `scripts/gallery.sql`).
+Planar constitutions were counted from the first block of the InChIKey, and the year of first report of each pair was defined as the earliest publication year ([`P577`](https://www.wikidata.org/wiki/P577)) among its supporting references.
+
+## Showcase Questions, `lotus-explore-rs` Architecture, and Visual Design
+
+The six questions of \textbf{Figure 1} were answered using the **LOTUS Explorer** (\url{https://lotus.nprod.net}) [@cito_usesMethodIn:Rutz2026lotus; @cito_extends:Rutz2026] and entries from the LOTUS Question Catalogue (\url{https://github.com/lotus-initiative/lotus-sparql-examples}), stored in the SIB SPARQL examples format [@cito_usesMethodIn:Willighagen2024; @cito_usesMethodIn:Bolleman2025]; chemical similarity queries used the IDSM Sachem service [@cito_usesMethodIn:Galgonek2021] orchestrated by `scripts/fetch_sparql.py --similarity`.
+Chemical structure depictions (`figures/structures/`) were rendered in ACS Document 1996 standard styling (`SetACS1996Mode`, `CondenseMolAbbreviations` for `-CO2H`, `-CHO`, and `-OAc`) as native vector SVG and high-DPI PNG files from verified Wikidata isomeric SMILES (`data/raw/lotus-export/frozen.csv`) with RDKit via `scripts/depict_structures.py`, aligning the shared 35-atom polycyclic and prenyl/geranyl scaffold of [hyperelodione D](https://www.wikidata.org/wiki/Q116482353) ([`Q116482353`](https://www.wikidata.org/wiki/Q116482353)) by substructure and embedding all structures as unsimplified native vector paths (`draw_rdkit_svg_on_axes` in `scripts/palette.py`).
+All figures (`scripts/showcase.py`, `scripts/figures.py`, `scripts/toc.py`, `scripts/si_figure_timeline.py`) were generated in Python using `matplotlib` and `Pillow`, pairing the official Wikidata brand palette (red `#990000`, green `#339966`, blue `#006699`, grey `#484848`) with Paul Tol and Fabio Crameri colorblind-safe scientific color schemes (`scripts/palette.py`) [@cito_usesMethodIn:Crameri2020; @cito_usesMethodIn:Tol2021].
+Result counts, SHA-256 query hashes, and wall-clock execution times were logged automatically in `data/raw/_provenance.tsv`, `data/raw/_gallery_timing.tsv`, and `data/raw/_gallery_similarity.tsv`.
+
+## Coverage, Nomenclature, Bibliometrics, and Reproducible Pipeline
+
+Species-level coverage across Tracheophyta ([`Q27133`](https://www.wikidata.org/wiki/Q27133)), Fungi ([`Q764`](https://www.wikidata.org/wiki/Q764)), Bacteria ([`Q10876`](https://www.wikidata.org/wiki/Q10876)), and Animalia ([`Q729`](https://www.wikidata.org/wiki/Q729)) was computed by counting species-rank items (`P105 = Q7432`) descending via *parent taxon* ([`P171`](https://www.wikidata.org/wiki/P171)) from each clade that had at least one linked compound with an InChIKey, and comparing against taxa carrying *has use* ([`P366`](https://www.wikidata.org/wiki/P366)) = medicinal plant ([`Q188840`](https://www.wikidata.org/wiki/Q188840)).
+Nomenclatural splitting was measured both directionally (`queries/12_nomenclature_split.rq`) and across the full bidirectional closure of all four nomenclatural relationship switches implemented in `lotus-explore-rs` (`queries/15_nomenclature_four_switches.rq` and `queries/15b_nomenclature_examples.rq`: [`P1420`](https://www.wikidata.org/wiki/P1420)/[`P12763`](https://www.wikidata.org/wiki/P12763), [`P566`](https://www.wikidata.org/wiki/P566)/[`P12766`](https://www.wikidata.org/wiki/P12766), [`P1403`](https://www.wikidata.org/wiki/P1403)/[`P12765`](https://www.wikidata.org/wiki/P12765), and [`P694`](https://www.wikidata.org/wiki/P694)/[`P12764`](https://www.wikidata.org/wiki/P12764)), as well as statement-level versus truthy vernacular names (`queries/16_vernacular_statements.rq`: `p:P1843/ps:P1843` vs. `wdt:P1843`).
+*Journal of Natural Products* publication counts per year (Crossref REST API, ISSN `0163-3864`, type `journal-article`), Question Catalogue counts, and downstream service metrics (PubChem LOTUS annotations, Zenodo snapshots, and Mastodon posts) were retrieved with `scripts/fetch_external.py`.
+Post-hoc chemical structure recovery was benchmarked across `{python} fmt(n['opsin_total'])` Wikidata chemical labels using OPSIN [@cito_usesMethodIn:Lowe2011opsin; @cito_usesDataFrom:Rutz2025wdlabels] and across the complete census of `{python} n['rec_n']` distinct natural products from all `{python} n['jnp_refs_2326']` *Journal of Natural Products* articles from 2023–2026 present in the commons at the snapshot date (`scripts/benchmark_structure_recovery.py`) [@cito_usesDataFrom:OtogoNNang2023; @cito_usesDataFrom:Laforest2023; @cito_usesDataFrom:Berger2024; @cito_usesDataFrom:Mollerke2024; @cito_usesDataFrom:Jagora2025; @cito_usesDataFrom:Jagora2026; @cito_usesDataFrom:Ozga2026] using OPSIN, STOUT v2 [@cito_usesMethodIn:Rajan2024stout], the NCI/CADD Chemical Identifier Resolver, ChEMBL v34 REST, PubChem PUG REST, and DECIMER v2.7 optical chemical structure recognition [@cito_usesMethodIn:Rajan2021decimer] via the Cheminformatics Microservice (\url{https://api.naturalproducts.net}) on clean 300-DPI single-molecule depictions (`data/raw/structure_recovery_benchmark.tsv` and `data/raw/structure_recovery_summary.tsv`).
+All manuscript statistics were compiled into `data/processed/numbers.json` by `scripts/compute_numbers.py` in a unified Python 3.13 environment managed by `uv` (`pyproject.toml` and `uv.lock`), and read directly into Quarto (`jupyter: python3`, `scripts/metrics.py`) and PDF compilation (`./mk all`) with no manual entry.
+All citations carry explicit Citation Typing Ontology (CiTO) annotations [@cito_usesMethodIn:Peroni2012], extracted at render time by `_extensions/cito/cito.lua` into `data/processed/cito_annotations.tsv` and rendered in the bibliography.
+In accordance with American Chemical Society policy on computational writing and coding tools, large language model assistants (Anthropic Claude Opus 4.6 and Google Gemini 2.5 Pro within the Antigravity development environment) were used during software engineering of `lotus-explore-rs`, refactoring of Python (`uv`) data-processing and plotting scripts, and copy-editing of the manuscript text; all code, SPARQL queries, RDKit chemical depictions, `matplotlib` figures (none of which use generative image synthesis), and numerical claims were executed and verified deterministically by the authors.
+
+# Data and Code Availability
+
+The LOTUS Explorer is freely available without registration at \url{https://lotus.nprod.net}, with Rust source code and CLI tools (`lotus search`, `lotus curate`, `lotus export`, `lotus export-pubchem-tree`, `lotus archive`) at \url{https://github.com/lotus-initiative/lotus-explore-rs}.
+The Question Catalogue is available at \url{https://github.com/lotus-initiative/lotus-sparql-examples}.
+All SPARQL queries, Python (`uv`) scripts, DuckDB SQL aggregations, raw and processed tables, CiTO citation annotations, Supporting Information templates, and the Quarto source of this article are openly available at \url{https://github.com/lotus-initiative/lotus-manuscript-isnptta} \textbf{[TODO: Mint and insert permanent Zenodo archive DOI upon submission]}.
+All data in Wikidata and all figures in this manuscript are dedicated to the public domain under CC0.
+
+# Notes
+
+**Author Contributions (CRediT).**
+\textbf{[TODO: Confirm final CRediT roles with all co-authors.]}
+P.-M.A.: Conceptualization, Investigation, Writing – Review & Editing, Funding Acquisition.
+J.B.: Conceptualization, Software, Methodology, Writing – Review & Editing.
+A.R.: Conceptualization, Data Curation, Formal Analysis, Software (`lotus-explore-rs`), Visualization, Writing – Original Draft, Writing – Review & Editing.
+
+**Competing Financial Interests.**
+\textbf{[TODO: Confirm competing financial interest declaration with all co-authors; e.g., ``J.B. is an employee of Collaborative Drug Discovery, Inc. P.-M.A. and A.R. declare no competing financial interest.'' or ``The authors declare no competing financial interest.'']}
+
+::: {.acknowledgement}
+
+**Funding.**
+\textbf{[TODO: Confirm exact grant numbers and funding sources for P.-M.A. (e.g., SNSF grant number), J.B., and A.R. (ETH Zürich / SNSF), and add any specific individuals to thank by initials and surname per ACS style.]}
+P.-M.A. was supported by Swiss Open Research Data Grants (CHORD), a programme jointly organized by swissuniversities and the ETH Domain Swiss National Science Foundation (SNSF) grant no. 10000895 (Anticipating the Chemistry of Life) Swiss National Science Foundation (SNSF) grant no. 10002786 (MetaboLinkAI)
+
+**Use of Coding and Language Model Tools (ACS Policy Disclosure).**
+During the development of `lotus-explore-rs` and the preparation of this manuscript (2026), the authors used coding and language model assistants (Anthropic Claude Opus 4.6 and Google Gemini 2.5 Pro via the Antigravity IDE) \textbf{[TODO: confirm exact tools/versions used by all co-authors before submission]} to assist with Rust and Python script refactoring, SPARQL query formatting, and prose editing.
+All chemical structure depictions and figures were generated deterministically from primary data using RDKit and `matplotlib` scripts without generative image tools, and the authors reviewed, verified, and take full responsibility for all code, data, and text in the manuscript.
+
+:::
+
+::: {.suppinfo}
+
+The Supporting Information is available free of charge: two-millennium timeline of natural products knowledge infrastructure (Figure S1); ready-to-use 2027 Supporting Information spreadsheet template (`structure_organism_template.tsv`) combining isomeric SMILES with source organism, taxon identifier, voucher, organ, and new/known status; worked 2027 Supporting Information example populated from recent *Journal of Natural Products* articles (`jnp_example_2027_submission.tsv`); draft Author Guidelines addendum proposal (`editorial_addendum_proposal.md`); machine-readable CiTO citation annotations (`cito_annotations.tsv`); and all executable SPARQL queries, timings, and summary tables.
+
+:::
+
+::: {.tocentry}
+\includegraphics{toc/toc.pdf}
+:::
